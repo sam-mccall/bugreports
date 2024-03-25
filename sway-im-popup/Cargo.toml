@@ -1,5 +1,5 @@
 [package]
-name = "sway-im-popup"
+name = "hypr-im-popup"
 version = "0.1.0"
 edition = "2021"
 

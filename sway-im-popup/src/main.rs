@@ -1,25 +1,8 @@
-// This demo input method (input-method-unstable-v2) shows an apparent bug in
-// sway's handling of the popup surface (i.e. candidate selection window).
-//
-// It has the usual structure: grabs keyboard when a text input is activated,
-// and forwards keys to the application via virtual keyboard.
-//
-// To demonstrate the popup behavior:
-//  - it is toggled with each key: first key shows it, second hides it, etc
-//  - it is initially blue and fills up vertically with red (1px per 10 frames)
-//
-// Buggy behavior under current sway (5a7477cb8f568ce4aeb852215ad40899f18f3d91):
-//  - after the first keystroke we correctly see the panel
-//  - after the second keystroke we correctly see nothing
-//  - after the third keystroke we see the panel *twice*, once in the correct
-//    (new) position and once in the original position. Both are animated.
-//  - after the fourth keystroke, both panels disappear
-//  - after the fifth keystroke, we have three panels, etc
-//  - the more panels we have, the faster the animation: the surface is getting
-//    multiple redraw calls per frame
-//  - when we deactivate the text area, sway crashes (if we showed >=2 panels)
+// This input method dumps WlSurface events for the input method popup.
+// This shows a bug in Hyprland where the coordinates are relative to the
+// editor window, not the popup.
 
-use std::{error::Error, os::fd::AsFd, sync::atomic::AtomicUsize};
+use std::{error::Error, os::fd::AsFd};
 
 use protocol::{
     wl_buffer::WlBuffer,
@@ -47,7 +30,7 @@ use wayland_protocols_misc::{
         zwp_input_method_keyboard_grab_v2::{self, ZwpInputMethodKeyboardGrabV2},
         zwp_input_method_manager_v2::ZwpInputMethodManagerV2,
         zwp_input_method_v2::{self, ZwpInputMethodV2},
-        zwp_input_popup_surface_v2::ZwpInputPopupSurfaceV2,
+        zwp_input_popup_surface_v2::{self, ZwpInputPopupSurfaceV2},
     },
     zwp_virtual_keyboard_v1::client::{
         zwp_virtual_keyboard_manager_v1::ZwpVirtualKeyboardManagerV1,
@@ -55,8 +38,8 @@ use wayland_protocols_misc::{
     },
 };
 
-const WIDTH: usize = 10;
-const HEIGHT: usize = 300;
+const WIDTH: usize = 100;
+const HEIGHT: usize = 100;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let conn = Connection::connect_to_env().unwrap();
@@ -164,11 +147,9 @@ impl Dispatch<ZwpInputMethodKeyboardGrabV2, ()> for App {
                     if app.open_popup.is_some() {
                         app.open_popup = None
                     } else {
-                        if false {
-                            // ENABLE THIS AND EVERYTHING WORKS!
-                            app.surface.destroy();
-                            app.surface = app.compositor.create_surface(qhandle, ());
-                        }
+                        // Work around surface duplication bug.
+                        app.surface.destroy();
+                        app.surface = app.compositor.create_surface(qhandle, ());
                         app.open_popup = Some(OpenPopup(app.input_method.get_input_popup_surface(
                             &app.surface,
                             qhandle,
@@ -214,17 +195,9 @@ impl Drop for OpenPopup {
 
 // Drawing and buffer management.
 pub fn draw_into(data: &mut [u8]) {
-    static DRAW_COUNT: AtomicUsize = AtomicUsize::new(0);
-    let count = DRAW_COUNT.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
-
     const RED: [u8; 4] = [0u8, 0, 255, 255];
-    const BLUE: [u8; 4] = [255u8, 0, 0, 255];
-    for (index, pix) in data.chunks_exact_mut(4).enumerate() {
-        pix.copy_from_slice(if index / WIDTH < count / 10 {
-            &RED
-        } else {
-            &BLUE
-        });
+    for pix in data.chunks_exact_mut(4) {
+        pix.copy_from_slice(&RED);
     }
 }
 
@@ -260,6 +233,19 @@ impl Dispatch<WlCallback, ()> for App {
     }
 }
 
+impl Dispatch<ZwpInputPopupSurfaceV2, ()> for App {
+    fn event(
+        _: &mut Self,
+        _: &ZwpInputPopupSurfaceV2,
+        event: zwp_input_popup_surface_v2::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        println!("{event:?}")
+    }
+}
+
 fn create_buffer(shm: &mut SlotPool) -> (Buffer, &mut [u8]) {
     shm.create_buffer(
         WIDTH as i32,
@@ -278,7 +264,6 @@ delegate_noop!(App: ignore ZwpVirtualKeyboardV1);
 delegate_noop!(App: ignore WlSeat);
 delegate_noop!(App: ignore WlCompositor);
 delegate_noop!(App: ignore WlSurface);
-delegate_noop!(App: ignore ZwpInputPopupSurfaceV2);
 delegate_noop!(App: ignore WlShm);
 delegate_noop!(App: ignore WlBuffer);
 

@@ -119,6 +119,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hypr-im-popup"
+version = "0.1.0"
+dependencies = [
+ "smithay-client-toolkit",
+ "wayland-client",
+ "wayland-protocols-misc",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.153"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -283,15 +292,6 @@ dependencies = [
  "wayland-scanner",
  "xkbcommon",
  "xkeysym",
-]
-
-[[package]]
-name = "sway-im-popup"
-version = "0.1.0"
-dependencies = [
- "smithay-client-toolkit",
- "wayland-client",
- "wayland-protocols-misc",
 ]
 
 [[package]]
